@@ -1,18 +1,18 @@
 // middleware/dbConnect.js
 import mongoose from "mongoose";
 
-const MONGO_URI = process.env.MONGO_URI;
+const connectWithRetry = (mongoUri, retries = 5, delay = 2000) => {
+  let isConnected = false; 
 
-const connectWithRetry = (retries = 5, delay = 2000) => {
-  let isConnected = false;
-
-  // Return middleware function
   return async (req, res, next) => {
-    if (isConnected) return next(); // Already connected
+    if (isConnected) {
+        console.log("✅ MongoDB connected successfully!");
+        return next();
+    }
 
     const connect = async (remainingRetries) => {
       try {
-        await mongoose.connect(MONGO_URI, {
+        await mongoose.connect(mongoUri, {
           useNewUrlParser: true,
           useUnifiedTopology: true,
         });
@@ -28,7 +28,7 @@ const connectWithRetry = (retries = 5, delay = 2000) => {
           console.log(`⏳ Retrying in ${delay / 1000} seconds...`);
           setTimeout(() => connect(remainingRetries - 1), delay);
         } else {
-          console.error("🚨 Could not connect to MongoDB. Exiting...");
+          console.error("🚨 Could not connect to MongoDB. Sending 500 response.");
           res.status(500).json({ error: "Database connection failed" });
         }
       }

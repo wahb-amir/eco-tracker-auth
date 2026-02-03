@@ -11,11 +11,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const PORT = process.env.PORT
-
+const MONGO_URI = process.env.MONGO_URI
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(connectWithRetry());
+app.use(connectWithRetry(MONGO_URI));
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });
