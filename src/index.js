@@ -8,7 +8,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import Login from "./api/auth/login.js"
 import Register from "./api/auth/register.js"
-
+import verifyRouter from './api/auth/verify.js'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -31,6 +31,7 @@ app.use(cookieParser())
 app.use(express.static(path.join(__dirname, "../asset")));
 app.use(('/api/login'),AuthLimiter,Login)
 app.use(('/api/register'),AuthLimiter,Register)
+app.use("/verify", verifyRouter);
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });
