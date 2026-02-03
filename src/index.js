@@ -4,6 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import connectWithRetry from "./utils/db.js";
+import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +19,7 @@ const MONGO_URI = process.env.MONGO_URI;
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser())
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });
