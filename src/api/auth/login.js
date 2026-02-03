@@ -3,6 +3,7 @@ import User from "../../model/User.js";
 import validator from "validator";
 import { generateAccessToken, generateRefreshToken } from "../../utils/token.js";
 const router = express.Router();
+import bcrypt from "bcryptjs";
 
 router.post("/", async (req, res) => {
   try {
@@ -13,11 +14,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ msg: "Credintials must be a string" });
     if (validator.isEmpty(email))
       return res.status(400).json({ msg: "Credintials cannot be empty" });
-    const userDoc = User.findOne(email);
+    const userDoc = User.findOne({email});
     if (!userDoc) return res.status(404).json({ msg: "User not found" });
     if (userDoc.verified === false)
       return res.status(403).json({ msg: "User not verified" });
-    const isMatch = await userDoc.isValidPassword(password);
+    const isMatch = await bcrypt.compare(password,userDoc.password);
     if (!isMatch) return res.status(400).json({ msg: "Invalid Credintials" });
     const tokenPayload = {
       email: userDoc.email,
