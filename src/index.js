@@ -25,13 +25,20 @@ const AuthLimiter = rateLimit({
     standardHeaders: true,    
     legacyHeaders: false,      
 });
+const VerifyRateLimit = rateLimit({
+    windowMs: 60*60*1000,
+    max: 10,                  
+    message: { error: "Too many requests, try again later." },
+    standardHeaders: true,    
+    legacyHeaders: false,      
+});
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, "../asset")));
 app.use(('/api/login'),AuthLimiter,Login)
 app.use(('/api/register'),AuthLimiter,Register)
-app.use("/verify", verifyRouter);
+app.use("/verify",VerifyRateLimit, verifyRouter);
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });

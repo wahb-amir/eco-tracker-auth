@@ -17,10 +17,8 @@ router.get("/", async (req, res) => {
 
   let payload;
   try {
-    // Verify signature and expiry
     payload = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
   } catch (err) {
-    // If token expired, try to clear any stored token so it can't be reused
     if (err.name === "TokenExpiredError") {
       try {
         const userToCleanup = await User.findOne({ "verificationToken.token": token });
