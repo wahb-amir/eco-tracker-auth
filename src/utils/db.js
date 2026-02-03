@@ -6,10 +6,7 @@ const connectWithRetry = async (mongoUri, retries = 5, delay = 2000) => {
 
   const connect = async (remainingRetries) => {
     try {
-      await mongoose.connect(mongoUri, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
+      await mongoose.connect(mongoUri);
       console.log("✅ MongoDB connected successfully!");
       isConnected = true;
     } catch (err) {
