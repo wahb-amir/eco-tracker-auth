@@ -1,14 +1,17 @@
 import jwt from "jsonwebtoken";
 
-const ACCESS_TOKEN=process.env.ACCESS_TOKEN;
-const REFRESH_TOKEN=process.env.REFRESH_TOKEN;
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
+
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PUBLIC_KEY = process.env.PUBLIC_KEY;
 
 export const generateAccessToken = (user) => {
   return jwt.sign(user, ACCESS_TOKEN, { expiresIn: "15m" });
 };
 
 export const generateRefreshToken = (user) => {
-  return jwt.sign(user, REFRESH_TOKEN),{expiresIn:"7d"};
+  return (jwt.sign(user, REFRESH_TOKEN), { expiresIn: "7d" });
 };
 
 export const verifyAccessToken = (token) => {
@@ -17,4 +20,22 @@ export const verifyAccessToken = (token) => {
 
 export const verifyRefreshToken = (token) => {
   return jwt.verify(token, REFRESH_TOKEN);
+};
+
+export const generateToken = (payload, expiresIn = "1h") => {
+  return jwt.sign(payload, PRIVATE_KEY, {
+    algorithm: "RS256",
+    expiresIn,
+  });
+};
+
+export const verifyToken = (token) => {
+  try {
+    const decoded = jwt.verify(token, PUBLIC_KEY, {
+      algorithms: ["RS256"],
+    });
+    return { valid: true, decoded };
+  } catch (err) {
+    return { valid: false, error: err.message };
+  }
 };
