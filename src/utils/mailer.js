@@ -7,9 +7,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Send verification email
-async function sendVerificationEmail(toEmail, token) {
-  const verificationLink = `https://yourapp.com/verify?token=${token}`;
+export async function sendVerificationEmail(toEmail, token) {
+  const VERIFICATION_LINK = `${process.env.ORIGIN}/verify?token=${token}`;
 
   const mailOptions = {
     from: `"Your App" <${process.env.EMAIL_USER}>`,
@@ -34,7 +33,7 @@ async function sendVerificationEmail(toEmail, token) {
           <!-- Header / Logo -->
           <tr>
             <td align="center" style="padding-bottom:20px;">
-              <img src="https://yourdomain.com/logo.png" alt="Eco-Tracker Logo" width="80" style="display:block;">
+              <img src=${process.env.ORIGIN}/logo.png alt="Eco-Tracker Logo" width="80" style="display:block;">
             </td>
           </tr>
           
@@ -55,7 +54,7 @@ async function sendVerificationEmail(toEmail, token) {
           <!-- Verify Button -->
           <tr>
             <td align="center" style="padding-bottom:20px;">
-              <a href="{{VERIFICATION_LINK}}" style="background-color:#2e7d32; color:#ffffff; text-decoration:none; padding:12px 25px; border-radius:5px; font-weight:bold; display:inline-block;">
+              <a href=${VERIFICATION_LINK} style="background-color:#2e7d32; color:#ffffff; text-decoration:none; padding:12px 25px; border-radius:5px; font-weight:bold; display:inline-block;">
                 Verify Email
               </a>
             </td>
@@ -65,7 +64,7 @@ async function sendVerificationEmail(toEmail, token) {
           <tr>
             <td style="text-align:center; font-size:14px; color:#999999; padding-bottom:20px;">
               Or copy and paste this link into your browser:<br>
-              <a href="{{VERIFICATION_LINK}}" style="color:#2e7d32; text-decoration:none;">{{VERIFICATION_LINK}}</a>
+              <a href=${VERIFICATION_LINK} style="color:#2e7d32; text-decoration:none;">${VERIFICATION_LINK}</a>
             </td>
           </tr>
 
@@ -90,4 +89,3 @@ async function sendVerificationEmail(toEmail, token) {
   await transporter.sendMail(mailOptions);
 }
 
-module.exports = { sendVerificationEmail };

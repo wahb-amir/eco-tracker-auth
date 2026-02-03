@@ -12,7 +12,6 @@ import Register from "./api/auth/register.js"
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const PORT = process.env.PORT || 3000;
@@ -20,15 +19,16 @@ const MONGO_URI = process.env.MONGO_URI;
 
 const app = express();
 const AuthLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 8,                  
-  message: { error: "Too many requests, try again later." },
-  standardHeaders: true,    
-  legacyHeaders: false,      
+    windowMs: 15 * 60 * 1000,
+    max: 8,                  
+    message: { error: "Too many requests, try again later." },
+    standardHeaders: true,    
+    legacyHeaders: false,      
 });
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser())
+app.use(express.static(path.join(__dirname, "../asset")));
 app.use(('/api/login'),AuthLimiter,Login)
 app.use(('/api/register'),AuthLimiter,Register)
 
