@@ -7,7 +7,7 @@ import connectWithRetry from "./utils/db.js";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import Login from "./api/auth/login.js"
-
+import Register from "./api/auth/register.js"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +20,7 @@ const MONGO_URI = process.env.MONGO_URI;
 
 const app = express();
 const AuthLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, //15min
+  windowMs: 15 * 60 * 1000,
   max: 8,                  
   message: { error: "Too many requests, try again later." },
   standardHeaders: true,    
@@ -30,6 +30,7 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser())
 app.use(('/api/login'),AuthLimiter,Login)
+app.use(('/api/register'),AuthLimiter,Register)
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });

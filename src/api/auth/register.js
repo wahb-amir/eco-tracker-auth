@@ -19,7 +19,7 @@ router.post("/", async(req, res) => {
     }
     if (validator.isEmail(email))
       return res.status(400).json({ msg: "Invalid Email" });
-    
+
     /** @type {any} */
     const userDoc = new User({
         name,
@@ -36,3 +36,5 @@ router.post("/", async(req, res) => {
     res.status(500).json({ msg: "Internal Server Error" });
   }
 });
+
+export default router

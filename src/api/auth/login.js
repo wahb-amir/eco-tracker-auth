@@ -1,7 +1,7 @@
 import express from "express";
-import User from "../../model/User";
+import User from "../../model/User.js";
 import validator from "validator";
-import { generateAccessToken, generateRefreshToken } from "../../utils/token";
+import { generateAccessToken, generateRefreshToken } from "../../utils/token.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -44,3 +44,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ msg: "Internal Server Error" });
   }
 });
+
+
+export default router
