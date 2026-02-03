@@ -22,14 +22,14 @@ export const verifyRefreshToken = (token) => {
   return jwt.verify(token, REFRESH_TOKEN);
 };
 
-export const generateToken = (payload, expiresIn = "1h") => {
+export const generateVerificationToken = (payload, expiresIn = "1h") => {
   return jwt.sign(payload, PRIVATE_KEY, {
     algorithm: "RS256",
     expiresIn,
   });
 };
 
-export const verifyToken = (token) => {
+export const verifyVerificationToken = (token) => {
   try {
     const decoded = jwt.verify(token, PUBLIC_KEY, {
       algorithms: ["RS256"],

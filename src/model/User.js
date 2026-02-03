@@ -34,7 +34,7 @@ userSchema.methods.setVerificationToken = function (token) {
   };
 };
 
-// Check if verification token is valid
+
 userSchema.methods.isVerificationTokenValid = function (token) {
   if (!this.verificationToken?.token) return false;
   return this.verificationToken.token === token;
