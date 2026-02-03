@@ -2,49 +2,75 @@ import express from "express";
 import User from "../../model/User.js";
 import validator from "validator";
 import { generateAccessToken, generateRefreshToken } from "../../utils/token.js";
-const router = express.Router();
 import bcrypt from "bcryptjs";
+
+const router = express.Router();
 
 router.post("/", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
+
+    // Basic presence & type checks
     if (!email || !password)
       return res.status(400).json({ msg: "All fields are required" });
     if (typeof email !== "string" || typeof password !== "string")
-      return res.status(400).json({ msg: "Credintials must be a string" });
-    if (validator.isEmpty(email))
-      return res.status(400).json({ msg: "Credintials cannot be empty" });
-    const userDoc = User.findOne({email});
+      return res.status(400).json({ msg: "Credentials must be strings" });
+
+    // Normalize and validate email
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    if (!validator.isEmail(email)) return res.status(400).json({ msg: "Invalid email" });
+    if (validator.isEmpty(password)) return res.status(400).json({ msg: "Password cannot be empty" });
+
+    // !!! IMPORTANT: await the DB call
+    const userDoc = await User.findOne({ email });
     if (!userDoc) return res.status(404).json({ msg: "User not found" });
-    if (userDoc.verified === false)
-      return res.status(403).json({ msg: "User not verified" });
-    const isMatch = await bcrypt.compare(password,userDoc.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid Credintials" });
+
+    // Ensure user is verified (treat missing/false as not verified)
+    if (!userDoc.verified) return res.status(403).json({ msg: "User not verified" });
+
+    // Ensure stored hash exists
+    if (!userDoc.password) return res.status(500).json({ msg: "User has no password set" });
+
+    // Compare supplied password with stored hash
+    const isMatch = await bcrypt.compare(password, userDoc.password);
+    if (!isMatch) return res.status(401).json({ msg: "Invalid credentials" });
+
+    // Prepare token payload and generate tokens
     const tokenPayload = {
       email: userDoc.email,
       id: userDoc._id,
       name: userDoc.name,
     };
-    const accessToken = generateAccessToken(accessPayload);
+
+    const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Cookie options
+    const isProd = process.env.NODE_ENV === "production";
+    const accessMaxAge = 60 * 60 * 1000; // 1 hour in ms
+    const refreshMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+
     res.cookie("accessToken", accessToken, {
-      httpOnly: true, 
-      secure: procces.env.NODE_ENV === "production",
+      httpOnly: true,
+      secure: isProd,
       sameSite: "lax",
-      maxAge: 60*60,
+      maxAge: accessMaxAge,
     });
+
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true, 
-      secure: procces.env.NODE_ENV === "production",
+      httpOnly: true,
+      secure: isProd,
       sameSite: "lax",
-      maxAge: 24 * 60 * 60*7,
+      maxAge: refreshMaxAge,
     });
-    res.status(200).json({message:"Login Successful"});
+
+    return res.status(200).json({ message: "Login successful" });
   } catch (e) {
-    console.log("Internal Server Error", e);
-    res.status(500).json({ msg: "Internal Server Error" });
+    console.error("Internal Server Error", e);
+
+    return res.status(500).json({ msg: "Internal Server Error" });
   }
 });
 
-
-export default router
+export default router;
