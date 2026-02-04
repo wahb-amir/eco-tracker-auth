@@ -22,6 +22,14 @@ export const generateRefreshToken = (user) => {
    const token= jwt.sign(user, REFRESH_TOKEN, { expiresIn: "7d" });
   return token;
 };
+export const generateVerificationToken = (user) => {
+   const token= jwt.sign(user, VERIFICATION_TOKEN, { expiresIn: "1h" });
+  return token;
+};
+
+export const verifyVerificationToken = (token) => {
+  return jwt.verify(token, VERIFICATION_TOKEN);
+};
 
 export function generateOtp(length = 6) {
   return crypto.randomInt(0, 10 ** length)

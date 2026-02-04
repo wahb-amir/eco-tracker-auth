@@ -1,7 +1,10 @@
 // routes/register.js
 import express from "express";
 import User from "../../model/User.js";
-import { setUserOtp } from "../../utils/token.js"; 
+import {
+  setUserOtp,
+  generateVerificationToken,
+} from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
 
 const router = express.Router();
@@ -10,7 +13,7 @@ router.post("/", async (req, res) => {
   try {
     let { email, password, name } = req.body;
 
-    // basic validation
+    // ---------- validation ----------
     if (!email || !password || !name) {
       return res.status(400).json({ msg: "All fields are required" });
     }
@@ -23,10 +26,9 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ msg: "Credentials must be strings" });
     }
 
-    email = email.trim()
+    email = email.trim().toLowerCase();
     name = name.trim();
 
-    // simple email + password checks
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ msg: "Invalid email address" });
@@ -38,7 +40,7 @@ router.post("/", async (req, res) => {
         .json({ msg: "Password must be at least 8 characters" });
     }
 
-    // check existing user
+    // ---------- check existing ----------
     const existing = await User.findOne({ email });
     if (existing) {
       return res
@@ -46,38 +48,49 @@ router.post("/", async (req, res) => {
         .json({ msg: "User with this email already exists" });
     }
 
-    // create user document (password hashing handled in model pre-save)
+    // ---------- create user ----------
     const userDoc = new User({ name, email, password });
-
-    // Save the user first so we have an _id (the setUserOtp helper may also save, but this is safer)
     await userDoc.save();
 
-    // generate & set OTP on the user. This should save the OTP to the DB and return the plain OTP.
-    // setUserOtp(userDoc) must return the plain OTP string (for emailing). Do NOT return this to clients.
-    const otp = await setUserOtp(userDoc);
+    // ---------- generate OTP ----------
+    const otp = await setUserOtp(userDoc); // hashed in DB
 
-    // send OTP via email (do NOT include OTP in API response)
+    // ---------- generate verification cookie ----------
+    const verificationToken = generateVerificationToken({
+      uid: userDoc._id.toString(),
+      email: userDoc.email,
+    });
+
+    res.cookie("verificationToken", verificationToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 1000,
+      path: "/",
+    });
+
+    // ---------- send OTP email ----------
     try {
       await sendOtpEmail(email, otp, { expiryMinutes: 60 });
     } catch (mailErr) {
-      // cleanup created user on email failure (best-effort)
+      // cleanup on failure
       try {
         await User.deleteOne({ _id: userDoc._id });
       } catch (cleanupErr) {
-        console.error("Failed to cleanup user after email error:", cleanupErr);
+        console.error("Failed to cleanup user:", cleanupErr);
       }
+
       console.error("Error sending OTP email:", mailErr);
       return res.status(500).json({ msg: "Failed to send verification email" });
     }
 
-    return res
-      .status(201)
-      .json({ msg: `Account created. Verification code sent to ${email}` });
+    return res.status(201).json({
+      msg: `Account created. Verification code sent to ${email}`,
+    });
   } catch (e) {
     console.error("Error in register:", e);
 
-    // duplicate key error race-case fallback
-    if (e && e.code === 11000) {
+    if (e?.code === 11000) {
       return res.status(409).json({ msg: "User with this email already exists" });
     }
 
