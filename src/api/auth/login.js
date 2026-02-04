@@ -1,69 +1,103 @@
+// routes/auth.js
 import express from "express";
-import User from "../../model/User.js";
-import validator from "validator";
-import { generateAccessToken, generateRefreshToken } from "../../utils/token.js";
+import User from '../../model/User.js'
 import bcrypt from "bcryptjs";
+import { setUserOtp, generateVerificationToken } from "../../utils/token.js";
+import { sendOtpEmail } from "../../utils/mailer.js";
 
 const router = express.Router();
+const ONE_HOUR_MS = 1000 * 60 * 60;
 
-router.post("/", async (req, res) => {
+const cookieOpts = (maxAgeMs) => ({
+  httpOnly: true,
+  maxAge: maxAgeMs,
+  sameSite: "strict",
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+});
+
+router.post("/", async (req, res, next) => {
   try {
-    let { email, password } = req.body;
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: "Missing email or password" });
+    }
 
-    if (!email || !password)
-      return res.status(400).json({ msg: "All fields are required" });
-    if (typeof email !== "string" || typeof password !== "string")
-      return res.status(400).json({ msg: "Credentials must be strings" });
+    const user = await User.findOne({ email: email.toLowerCase() }).lean();
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-    email = email.trim().toLowerCase();
-    password = password.trim();
-    if (!validator.isEmail(email)) return res.status(400).json({ msg: "Invalid email" });
-    if (validator.isEmpty(password)) return res.status(400).json({ msg: "Password cannot be empty" });
+    // re-fetch writable document for updates
+    const userDoc = await User.findById(user._id);
+    if (!userDoc) return res.status(401).json({ message: "Invalid credentials" });
 
-    const userDoc = await User.findOne({ email });
-    if (!userDoc) return res.status(404).json({ msg: "User not found" });
+    // verify password (adapt field name if needed)
+    const passwordHash = userDoc.passwordHash ?? userDoc.password;
+    const passwordMatches = await bcrypt.compare(password, passwordHash);
+    if (!passwordMatches) return res.status(401).json({ message: "Invalid credentials" });
 
+    if (!userDoc.verified) {
+      const hasOtp = !!userDoc.otp;
+      const otpVerified = !!userDoc.otpVerified;
 
-    if (!userDoc.verified) return res.status(403).json({ msg: "User not verified" });
+      let otpExpired = true;
+      if (userDoc.otpExpires) {
+        otpExpired = Date.now() > new Date(userDoc.otpExpires).getTime();
+      } else if (userDoc.otpCreatedAt) {
+        otpExpired = Date.now() - new Date(userDoc.otpCreatedAt).getTime() > ONE_HOUR_MS;
+      } else {
+        otpExpired = true; // conservative fallback
+      }
+      if (hasOtp && !otpVerified) {
+        if (otpExpired) {
+          // setUserOtp expected to save hashed OTP in DB and return plaintext OTP
+          const newPlainOtp = await setUserOtp(userDoc);
+          try {
+            await sendOtpEmail(userDoc.email, newPlainOtp);
+          } catch (mailErr) {
+            console.error("Failed to send OTP email:", mailErr);
+            // continue — still redirect user to verify so they can request/resend as needed
+          }
+        }
 
-    if (!userDoc.password) return res.status(500).json({ msg: "User has no password set" });
+        const verificationToken = generateVerificationToken({
+          uid: userDoc._id.toString(),
+          email: userDoc.email,
+        });
 
-    const isMatch = await bcrypt.compare(password, userDoc.password);
-    if (!isMatch) return res.status(401).json({ msg: "Invalid credentials" });
+        res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000)); // 1 hour
+        return res.status(200).json({redirectTo:"/verify",message:"Redirecting..."})
+      }
 
+      // No OTP present -> create one, send, redirect
+      const newPlainOtp = await setUserOtp(userDoc);
+      try {
+        await sendOtpEmail(userDoc.email, newPlainOtp);
+      } catch (mailErr) {
+        console.error("Failed to send OTP email:", mailErr);
+      }
 
-    const tokenPayload = {
+      const verificationToken = generateVerificationToken({
+        uid: userDoc._id.toString(),
+        email: userDoc.email,
+      });
+
+      res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000)); // 1 hour
+      return res.status(200).json({redirectTo:"/verify",message:"Redirecting..."})
+    }
+
+    // User is verified -> issue session token and return success
+    const sessionToken = generateVerificationToken({
+      uid: userDoc._id.toString(),
       email: userDoc.email,
-      id: userDoc._id,
-      name: userDoc.name,
-    };
-
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
-    
-    const isProd = process.env.NODE_ENV === "production";
-    const accessMaxAge = 60 * 60 * 1000; // 1 hour in ms
-    const refreshMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
-
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      maxAge: accessMaxAge,
+      type: "session",
     });
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      maxAge: refreshMaxAge,
-    });
-
+    // session cookie: 7 days
+    res.cookie("sessionToken", sessionToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
     return res.status(200).json({ message: "Login successful" });
-  } catch (e) {
-    console.error("Internal Server Error", e);
-
-    return res.status(500).json({ msg: "Internal Server Error" });
+  } catch (err) {
+    console.error("Login error:", err);
+    return next(err);
   }
 });
 

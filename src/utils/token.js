@@ -1,8 +1,11 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import dotenv from "dotenv";
-
-dotenv.config();
+import path from "path"
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const {
   ACCESS_TOKEN_SECRET,
@@ -33,9 +36,9 @@ export const generateRefreshToken = (userId) => {
   );
 };
 
-export const generateVerificationToken = (userId) => {
+export const generateVerificationToken = (payload) => {
   return jwt.sign(
-    { uid: userId },
+    payload,
     VERIFICATION_TOKEN_SECRET,
     { expiresIn: "1h" }
   );

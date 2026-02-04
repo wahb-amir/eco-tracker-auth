@@ -21,10 +21,19 @@ const userSchema = new mongoose.Schema({
   verified: { type: Boolean, default: false },
 
   verificationOtp: {
-    type: verificationOtpSchema,
-    default: () => ({})
-  },
+  type: verificationOtpSchema,
+  default: undefined 
+},
 });
+userSchema.index(
+  { "verificationOtp.createdAt": 1 },
+  {
+    expireAfterSeconds: 0,
+    partialFilterExpression: {
+      "verificationOtp.createdAt": { $exists: true }
+    }
+  }
+);
 
 // ----------------- password hashing -----------------
 userSchema.pre("save", async function () {
