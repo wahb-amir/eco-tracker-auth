@@ -40,7 +40,6 @@ router.post("/", async (req, res) => {
 
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
-    console.log(refreshToken)
     
     const isProd = process.env.NODE_ENV === "production";
     const accessMaxAge = 60 * 60 * 1000; // 1 hour in ms
