@@ -31,7 +31,7 @@ router.post("/", async (req, res) => {
     const isMatch = await bcrypt.compare(password, userDoc.password);
     if (!isMatch) return res.status(401).json({ msg: "Invalid credentials" });
 
-    // Prepare token payload and generate tokens
+
     const tokenPayload = {
       email: userDoc.email,
       id: userDoc._id,

@@ -23,8 +23,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ msg: "Credentials must be strings" });
     }
 
-    // normalize
-    email = email.trim().toLowerCase();
+    email = email.trim()
     name = name.trim();
 
     // simple email + password checks
