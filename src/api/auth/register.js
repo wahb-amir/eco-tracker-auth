@@ -1,17 +1,25 @@
-// routes/register.js
 import express from "express";
+import mongoose from "mongoose";
 import User from "../../model/User.js";
+import Otp from "../../model/Otp.js";
 import {
-  setUserOtp,
   generateVerificationToken,
+  generateNumericOtp,
+  hashOtp,
 } from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
 import { hashPassword } from "../../utils/hashPassword.js";
+
 const router = express.Router();
 
 router.post("/", async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     let { email, password, name } = req.body;
+
     // ---------- validation ----------
     if (!email || !password || !name) {
       return res.status(400).json({ msg: "All fields are required" });
@@ -40,25 +48,46 @@ router.post("/", async (req, res) => {
     }
 
     // ---------- check existing ----------
-    const existing = await User.findOne({ email });
+    const existing = await User.findOne({ email }).session(session);
     if (existing) {
       return res
         .status(409)
         .json({ msg: "User with this email already exists" });
     }
+
     const hashedPassword = await hashPassword(password);
 
     // ---------- create user ----------
-    const userDoc = new User({ name, email, password:hashedPassword });
-    await userDoc.save();
+    const userDoc = await User.create(
+      [{ name, email, password: hashedPassword }],
+      { session }
+    );
+
+    const user = userDoc[0];
 
     // ---------- generate OTP ----------
-    const otp = await setUserOtp(userDoc); // hashed in DB
+    const otp = generateNumericOtp(6);
 
-    // ---------- generate verification cookie ----------
+    await Otp.deleteMany({ userId: user._id }).session(session);
+
+    await Otp.create(
+      [
+        {
+          userId: user._id,
+          codeHash: hashOtp(otp),
+        },
+      ],
+      { session }
+    );
+
+    // ---------- commit BEFORE email ----------
+    await session.commitTransaction();
+    session.endSession();
+
+    // ---------- verification cookie ----------
     const verificationToken = generateVerificationToken({
-      uid: userDoc._id.toString(),
-      email: userDoc.email,
+      uid: user._id.toString(),
+      email: user.email,
     });
 
     res.cookie("verificationToken", verificationToken, {
@@ -73,25 +102,31 @@ router.post("/", async (req, res) => {
     try {
       await sendOtpEmail(email, otp, { expiryMinutes: 60 });
     } catch (mailErr) {
-      // cleanup on failure
-      try {
-        await User.deleteOne({ _id: userDoc._id });
-      } catch (cleanupErr) {
-        console.error("Failed to cleanup user:", cleanupErr);
-      }
+      console.error("Email failed, rolling back user + otp");
 
-      console.error("Error sending OTP email:", mailErr);
-      return res.status(500).json({ msg: "Failed to send verification email" });
+      await Promise.all([
+        User.deleteOne({ _id: user._id }),
+        Otp.deleteMany({ userId: user._id }),
+      ]);
+
+      return res.status(500).json({
+        msg: "Failed to send verification email",
+      });
     }
 
     return res.status(201).json({
       msg: `Account created. Verification code sent to ${email}`,
     });
   } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("Error in register:", e);
 
     if (e?.code === 11000) {
-      return res.status(409).json({ msg: "User with this email already exists" });
+      return res
+        .status(409)
+        .json({ msg: "User with this email already exists" });
     }
 
     return res.status(500).json({ msg: "Internal Server Error" });

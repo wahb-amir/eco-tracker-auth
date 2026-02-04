@@ -69,18 +69,6 @@ export function hashOtp(otp) {
     .digest("hex");
 }
 
-export async function setUserOtp(user, ttlMinutes = 60) {
-  const otp = generateOtp();
-  const otpHash = hashOtp(otp);
-
-  user.verificationOtp = {
-    codeHash: otpHash,
-    expiresAt: new Date(Date.now() + ttlMinutes * 60 * 1000),
-  };
-
-  await user.save();
-  return otp;
-}
 
 export function verifyOtp(user, otp) {
   if (!user.verificationOtp) return false;
