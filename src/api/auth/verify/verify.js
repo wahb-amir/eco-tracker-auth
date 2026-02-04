@@ -5,7 +5,7 @@ import User from "../../../model/User.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/info", async (req, res) => {
   try{
      const token = req.cookies.verificationToken;
      if(!token)
