@@ -1,9 +1,9 @@
 // routes/auth.js
 import express from "express";
 import User from '../../model/User.js'
-import bcrypt from "bcryptjs";
 import { setUserOtp, generateVerificationToken } from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
+import { comparePassword } from "../../utils/hashPassword.js";
 
 const router = express.Router();
 const ONE_HOUR_MS = 1000 * 60 * 60;
@@ -30,9 +30,8 @@ router.post("/", async (req, res, next) => {
     const userDoc = await User.findById(user._id);
     if (!userDoc) return res.status(401).json({ message: "Invalid credentials" });
 
-    // verify password (adapt field name if needed)
     const passwordHash = userDoc.passwordHash ?? userDoc.password;
-    const passwordMatches = await bcrypt.compare(password, passwordHash);
+    const passwordMatches = await comparePassword(password, passwordHash);
     if (!passwordMatches) return res.status(401).json({ message: "Invalid credentials" });
 
     if (!userDoc.verified) {

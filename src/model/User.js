@@ -1,117 +1,71 @@
-// models/User.js
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 
-const OTP_TTL_MS = 60 * 60 * 1000; // 60 minutes
-const OTP_LENGTH = 6;
-
-const verificationOtpSchema = new mongoose.Schema(
-  {
-    codeHash: { type: String, default: null }, // hashed OTP
-    createdAt: { type: Date, default: null },
-  },
-  { _id: false }
-);
+const BCRYPT_REGEX = /^\$2[aby]\$(1[0-9]|[2-9][0-9])\$[./A-Za-z0-9]{53}$/;
 
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
+  email: { 
+    type: String, 
+    required: true, 
+    unique: true, 
+    lowercase: true, 
+    trim: true 
+  },
+
+  password: { 
+    type: String, 
+    required: true,
+    validate: {
+      validator(value) {
+        return BCRYPT_REGEX.test(value);
+      },
+      message:
+        "Password must be a bcrypt hash. Plaintext passwords are NOT allowed.",
+    },
+  },
+
   name: { type: String, required: true },
   verified: { type: Boolean, default: false },
 
-  verificationOtp: {
-  type: verificationOtpSchema,
-  default: undefined 
-},
+}, {
+  timestamps: true
 });
-userSchema.index(
-  { "verificationOtp.createdAt": 1 },
-  {
-    expireAfterSeconds: 0,
-    partialFilterExpression: {
-      "verificationOtp.createdAt": { $exists: true }
-    }
-  }
-);
 
-// ----------------- password hashing -----------------
-userSchema.pre("save", async function () {
+
+userSchema.pre("save", function () {
+
   if (!this.isModified("password")) return;
 
-  this.password = await bcrypt.hash(this.password, 10);
+  if (!BCRYPT_REGEX.test(this.password)) {
+    throw new Error(
+      "SECURITY ERROR: Attempted to store a non-bcrypt password."
+    );
+  }
 });
 
 
-// compare password
-userSchema.methods.isValidPassword = async function (password) {
-  return bcrypt.compare(password, this.password);
-};
 
-// ----------------- OTP helpers -----------------
-function generateNumericOtp(length = OTP_LENGTH) {
-  const min = 10 ** (length - 1);
-  const max = 10 ** length - 1;
-  return String(Math.floor(Math.random() * (max - min + 1)) + min);
-}
+userSchema.pre(["updateOne", "findOneAndUpdate", "updateMany"], function () {
 
-function hashOtp(otp) {
-  return crypto.createHash("sha256").update(String(otp)).digest("hex");
-}
+  const update = this.getUpdate();
+  if (!update) return;
 
-/**
- * Generate & store a new OTP (hashed). Returns the plain OTP (caller should email/sms it).
- * options: { length: number }
- */
-userSchema.methods.setVerificationOtp = async function (options = {}) {
-  const length = options.length || OTP_LENGTH;
-  const otp = generateNumericOtp(length);
-  const codeHash = hashOtp(otp);
+  const password =
+    update.password ||
+    update?.$set?.password;
 
-  this.verificationOtp = {
-    codeHash,
-    createdAt: new Date(),
-  };
+  if (!password) return;
 
-  await this.save();
-  return otp; 
-};
-
-userSchema.methods.verifyOtp = async function (candidateOtp) {
-  if (!this.verificationOtp || !this.verificationOtp.createdAt || !this.verificationOtp.codeHash) {
-    return { ok: false, reason: "no_otp" };
+  if (!BCRYPT_REGEX.test(password)) {
+    throw new Error(
+      "SECURITY ERROR: Attempted to update with a non-bcrypt password."
+    );
   }
-
-  const createdAt = new Date(this.verificationOtp.createdAt);
-  const now = Date.now();
-
-  // check expiry in code (do not rely solely on TTL index)
-  if (now - createdAt.getTime() > OTP_TTL_MS) {
-    // clear OTP
-    this.verificationOtp = { codeHash: null, createdAt: null };
-    await this.save();
-    return { ok: false, reason: "expired" };
-  }
-
-  const candidateHash = hashOtp(candidateOtp);
-  if (candidateHash !== this.verificationOtp.codeHash) {
-    return { ok: false, reason: "invalid" };
-  }
-
-  // success: mark verified and clear OTP
-  this.verified = true;
-  this.verificationOtp = { codeHash: null, createdAt: null };
-  await this.save();
-
-  return { ok: true };
-};
+});
 
 
-userSchema.methods.clearOtp = async function () {
-  this.verificationOtp = { codeHash: null, createdAt: null };
-  await this.save();
-};
+const UserModel =
+  mongoose.models.User ||
+  mongoose.model("User", userSchema);
 
-// ----------------- export model safely (avoids overwrite in dev/hot reload) -----------------
-const UserModel = mongoose.models.User || mongoose.model("User", userSchema);
 export default UserModel;

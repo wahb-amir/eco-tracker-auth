@@ -1,4 +1,4 @@
-import User from "../models/User.js";
+import User from "../model/User.js";
 
 const OTP_TTL_MS = 60 * 60 * 1000;
 

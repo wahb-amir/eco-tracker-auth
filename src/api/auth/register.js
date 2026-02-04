@@ -6,7 +6,7 @@ import {
   generateVerificationToken,
 } from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
-
+import { hashPassword } from "../../utils/hashPassword.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -46,9 +46,10 @@ router.post("/", async (req, res) => {
         .status(409)
         .json({ msg: "User with this email already exists" });
     }
+    const hashedPassword = await hashPassword(password);
 
     // ---------- create user ----------
-    const userDoc = new User({ name, email, password });
+    const userDoc = new User({ name, email, password:hashedPassword });
     await userDoc.save();
 
     // ---------- generate OTP ----------

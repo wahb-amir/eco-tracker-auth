@@ -9,6 +9,10 @@ import cookieParser from "cookie-parser";
 import Login from "./api/auth/login.js"
 import Register from "./api/auth/register.js"
 import verifyRouter from './api/auth/verify/verify.js'
+import cron from "node-cron";
+import { cleanupExpiredOtps } from "./utils/otpCleanup.js";
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -38,7 +42,7 @@ const allowedOrigins = [
   "http://localhost:5000",
   "http://localhost:5500",
 ];
-
+cron.schedule("*/10 * * * *", cleanupExpiredOtps);
 app.use(
   cors({
     origin: function (origin, callback) {
