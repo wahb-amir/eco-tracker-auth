@@ -10,22 +10,38 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Send the user a numeric OTP for verification.
+ * Sleep helper
+ * @param {number} ms
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Send the user a numeric OTP for verification, with retry/backoff.
  * @param {string} toEmail - recipient email
  * @param {string} otp - the OTP code (plain string, e.g. "123456")
- * @param {object} [opts] - optional extras { expiryMinutes, origin }
+ * @param {object} [opts] - optional extras { expiryMinutes=60, origin, maxRetries=3, retryDelayMs=500 }
+ * @returns {Promise<{ success: boolean, info?: any }>}
  */
 export async function sendOtpEmail(toEmail, otp, opts = {}) {
-  if (!toEmail) throw new Error("toEmail is required");
-  if (!otp) throw new Error("otp is required");
+  if (!toEmail || typeof toEmail !== "string") throw new Error("toEmail is required and must be a string");
+  if (!otp || typeof otp !== "string") throw new Error("otp is required and must be a string");
 
-  const expiryMinutes = opts.expiryMinutes ?? 60;
-  const origin = opts.origin ?? process.env.ORIGIN ?? "";
+  const expiryMinutes = Number(opts.expiryMinutes ?? 60);
+  const originRaw = opts.origin ?? process.env.ORIGIN ?? "";
+  // sanitize origin: remove trailing slash
+  const origin = typeof originRaw === "string" ? originRaw.replace(/\/+$/, "") : "";
 
-  const verifyUrl = origin ? `${origin.replace(/\/$/, "")}/verify?email=${encodeURIComponent(toEmail)}` : "";
+  // include both email & otp in query params so clicking from email autofills
+  const verifyUrl = origin
+    ? `${origin}/verify?email=${encodeURIComponent(toEmail)}&otp=${encodeURIComponent(otp)}`
+    : "";
+
+  const fromAddress = process.env.EMAIL_FROM ?? `"Eco Tracker" <${process.env.EMAIL_USER}>`;
 
   const mailOptions = {
-    from: `"Eco Tracker" <${process.env.EMAIL_USER}>`,
+    from: fromAddress,
     to: toEmail,
     subject: "Your Eco-Tracker verification code",
     text: `Your Eco-Tracker verification code is: ${otp}\n\nIt expires in ${expiryMinutes} minutes.\n\n${verifyUrl ? `Open: ${verifyUrl}` : ""}`,
@@ -44,7 +60,7 @@ export async function sendOtpEmail(toEmail, otp, opts = {}) {
               <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 6px 30px rgba(2,6,23,0.08);">
                 <tr>
                   <td style="padding:28px 32px;text-align:center;">
-                    <img src="${origin ? `${origin.replace(/\/$/, "")}/logo.png` : ""}" alt="Eco-Tracker" width="72" style="display:block;margin:0 auto 12px auto;">
+                    <img src="${origin ? `${origin}/logo.png` : ""}" alt="Eco-Tracker" width="72" style="display:block;margin:0 auto 12px auto;">
                     <h1 style="margin:0;font-size:20px;color:#1f7a3a;">Your verification code</h1>
                     <p style="color:#495057;margin:8px 0 20px;">Use the code below to verify your Eco-Tracker account. It expires in <strong>${expiryMinutes} minutes</strong>.</p>
 
@@ -74,6 +90,41 @@ export async function sendOtpEmail(toEmail, otp, opts = {}) {
     `,
   };
 
-  const info = await transporter.sendMail(mailOptions);
-  return info;
+  // retry config
+  const maxRetries = Number.isInteger(opts.maxRetries) ? opts.maxRetries : 3;
+  const baseDelay = Number.isInteger(opts.retryDelayMs) ? opts.retryDelayMs : 500; // ms
+
+  // quick transporter verify to catch bad SMTP config early
+  try {
+    // verify may hang if SMTP is unreachable; don't let it crash fast in production; wrap in timeout if desired
+    await transporter.verify();
+  } catch (verifyErr) {
+    // fail fast: misconfigured SMTP credentials or unreachable provider
+    throw new Error(`SMTP verify failed: ${verifyErr.message || verifyErr}`);
+  }
+
+  let attempt = 0;
+  let lastErr = null;
+
+  while (attempt < maxRetries) {
+    attempt += 1;
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      return { success: true, info };
+    } catch (err) {
+      lastErr = err;
+      // calculate exponential backoff with jitter
+      const jitter = Math.floor(Math.random() * 100);
+      const delay = baseDelay * Math.pow(2, attempt - 1) + jitter;
+      // if last attempt, break
+      if (attempt >= maxRetries) break;
+      // small log for server-side debugging
+      console.warn(`sendOtpEmail attempt ${attempt} failed. retrying in ${delay}ms`, err && err.message ? err.message : err);
+      await sleep(delay);
+    }
+  }
+
+  // after retries failed, throw with context
+  const errMsg = lastErr && lastErr.message ? lastErr.message : String(lastErr);
+  throw new Error(`Failed to send OTP email after ${maxRetries} attempts: ${errMsg}`);
 }
