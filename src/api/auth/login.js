@@ -1,7 +1,8 @@
 // routes/auth.js
 import express from "express";
-import User from '../../model/User.js'
-import { setUserOtp, generateVerificationToken } from "../../utils/token.js";
+import User from "../../model/User.js";
+import Otp from "../../model/Otp.js";
+import { generateVerificationToken } from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
 import { comparePassword } from "../../utils/hashPassword.js";
 
@@ -23,71 +24,61 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "Missing email or password" });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).lean();
+    const emailLower = String(email).trim().toLowerCase();
+
+    // fetch user as a mongoose document (not .lean()) so we can update if needed
+    const user = await User.findOne({ email: emailLower });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-    // re-fetch writable document for updates
-    const userDoc = await User.findById(user._id);
-    if (!userDoc) return res.status(401).json({ message: "Invalid credentials" });
-
-    const passwordHash = userDoc.passwordHash ?? userDoc.password;
-    const passwordMatches = await comparePassword(password, passwordHash);
+    // compare password (user.password expected to be bcrypt hash)
+    const passwordMatches = await comparePassword(password, user.password);
     if (!passwordMatches) return res.status(401).json({ message: "Invalid credentials" });
 
-    if (!userDoc.verified) {
-      const hasOtp = !!userDoc.otp;
-      const otpVerified = !!userDoc.otpVerified;
+    // If user not verified => ensure OTP exists and send (if needed), then redirect to /verify
+    if (!user.verified) {
+      const otpType = "email_verification";
 
-      let otpExpired = true;
-      if (userDoc.otpExpires) {
-        otpExpired = Date.now() > new Date(userDoc.otpExpires).getTime();
-      } else if (userDoc.otpCreatedAt) {
-        otpExpired = Date.now() - new Date(userDoc.otpCreatedAt).getTime() > ONE_HOUR_MS;
-      } else {
-        otpExpired = true; // conservative fallback
-      }
-      if (hasOtp && !otpVerified) {
-        if (otpExpired) {
-          // setUserOtp expected to save hashed OTP in DB and return plaintext OTP
-          const newPlainOtp = await setUserOtp(userDoc);
-          try {
-            await sendOtpEmail(userDoc.email, newPlainOtp);
-          } catch (mailErr) {
-            console.error("Failed to send OTP email:", mailErr);
-            // continue — still redirect user to verify so they can request/resend as needed
-          }
+      // find current OTP record (if any)
+      const otpRecord = await Otp.findOne({ userId: user._id, type: otpType });
+
+      let shouldCreateAndSend = true;
+
+      if (otpRecord) {
+        // if expiresAt exists and is still in the future -> keep it (don't spam)
+        if (otpRecord.expiresAt && otpRecord.expiresAt.getTime() > Date.now()) {
+          shouldCreateAndSend = false;
+        } else {
+          // expired (or no expiresAt) -> we will create a new one
+          shouldCreateAndSend = true;
         }
-
-        const verificationToken = generateVerificationToken({
-          uid: userDoc._id.toString(),
-          email: userDoc.email,
-        });
-
-        res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000)); // 1 hour
-        return res.status(200).json({redirectTo:"/verify",message:"Redirecting..."})
       }
 
-      // No OTP present -> create one, send, redirect
-      const newPlainOtp = await setUserOtp(userDoc);
-      try {
-        await sendOtpEmail(userDoc.email, newPlainOtp);
-      } catch (mailErr) {
-        console.error("Failed to send OTP email:", mailErr);
+      if (shouldCreateAndSend) {
+        // create (or replace) OTP and return plaintext to send
+        const otpPlain = await Otp.createForUser(user._id, otpType);
+        try {
+          await sendOtpEmail(user.email, otpPlain, { expiryMinutes: 60 });
+        } catch (mailErr) {
+          console.error("Failed to send OTP email:", mailErr);
+          // We still proceed to set verification cookie so user can trigger resend from /verify
+          // (Alternatively you could return 500 here — choose what suits your UX.)
+        }
       }
 
+      // generate verification token (sent as httpOnly cookie)
       const verificationToken = generateVerificationToken({
-        uid: userDoc._id.toString(),
-        email: userDoc.email,
+        uid: user._id.toString(),
+        email: user.email,
       });
 
       res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000)); // 1 hour
-      return res.status(200).json({redirectTo:"/verify",message:"Redirecting..."})
+      return res.status(200).json({ redirectTo: "/verify", message: "Verification required" });
     }
 
     // User is verified -> issue session token and return success
     const sessionToken = generateVerificationToken({
-      uid: userDoc._id.toString(),
-      email: userDoc.email,
+      uid: user._id.toString(),
+      email: user.email,
       type: "session",
     });
 
