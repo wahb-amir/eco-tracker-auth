@@ -15,11 +15,13 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const PUBLIC_KEY = process.env.PUBLIC_KEY;
 
 export const generateAccessToken = (user) => {
-  return jwt.sign(user, ACCESS_TOKEN, { expiresIn: "15m" });
+  const token= jwt.sign(user, ACCESS_TOKEN, { expiresIn: "15m" });
+  return token;
 };
 
 export const generateRefreshToken = (user) => {
-  return (jwt.sign(user, REFRESH_TOKEN), { expiresIn: "7d" });
+   const token= jwt.sign(user, REFRESH_TOKEN, { expiresIn: "7d" });
+  return token;
 };
 
 export const verifyAccessToken = (token) => {
