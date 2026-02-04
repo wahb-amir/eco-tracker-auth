@@ -78,3 +78,29 @@ export function verifyOtp(user, otp) {
 
   return hashOtp(otp) === codeHash;
 }
+
+/* ───────────────── ROTATE TOKENS ───────────────── */
+
+export async function rotateTokens(refreshToken) {
+  if (!refreshToken) return null;
+
+  try {
+
+    const decoded = verifyRefreshToken(refreshToken); 
+    const userId = decoded.uid;
+
+    const user = { id: userId }; 
+
+    const newAccessToken = generateAccessToken(userId);
+    const newRefreshToken = generateRefreshToken(userId);
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user,
+    };
+  } catch (err) {
+
+    return null;
+  }
+}

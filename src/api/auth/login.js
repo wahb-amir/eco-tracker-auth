@@ -1,22 +1,39 @@
-// routes/auth.js
 import express from "express";
 import User from "../../model/User.js";
 import Otp from "../../model/Otp.js";
-import { generateVerificationToken } from "../../utils/token.js";
+import {
+  generateVerificationToken,
+  generateAccessToken,
+  generateRefreshToken,
+} from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
 import { comparePassword } from "../../utils/hashPassword.js";
 
 const router = express.Router();
-const ONE_HOUR_MS = 1000 * 60 * 60;
 
+// cookie helper: maxAge in milliseconds
 const cookieOpts = (maxAgeMs) => ({
   httpOnly: true,
   maxAge: maxAgeMs,
-  sameSite: "strict",
+  sameSite: "strict", // adjust to 'none' + secure for cross-site scenarios
   secure: process.env.NODE_ENV === "production",
   path: "/",
 });
 
+/**
+ * POST /api/auth
+ * login endpoint
+ *
+ * Body: { email, password }
+ *
+ * Behavior:
+ * - If user not found / wrong password => 401
+ * - If user exists but not verified:
+ *     - if an unexpired OTP exists -> do NOT resend, set verificationToken cookie, return redirectTo
+ *     - if no OTP or expired -> create+send new OTP, set verificationToken cookie, return redirectTo
+ * - If user verified:
+ *     - generate access + refresh tokens, set cookies, return minimal user payload
+ */
 router.post("/", async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -26,65 +43,85 @@ router.post("/", async (req, res, next) => {
 
     const emailLower = String(email).trim().toLowerCase();
 
-    // fetch user as a mongoose document (not .lean()) so we can update if needed
+    // fetch user as mongoose document (not lean) so we can update if needed later
     const user = await User.findOne({ email: emailLower });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-    // compare password (user.password expected to be bcrypt hash)
+    // verify password
     const passwordMatches = await comparePassword(password, user.password);
-    if (!passwordMatches) return res.status(401).json({ message: "Invalid credentials" });
+    if (!passwordMatches)
+      return res.status(401).json({ message: "Invalid credentials" });
 
-    // If user not verified => ensure OTP exists and send (if needed), then redirect to /verify
+    // If user not verified => ensure OTP exists (or create), set verification cookie, return redirectTo
     if (!user.verified) {
       const otpType = "email_verification";
 
       // find current OTP record (if any)
-      const otpRecord = await Otp.findOne({ userId: user._id, type: otpType });
+      let otpRecord = await Otp.findOne({ userId: user._id, type: otpType });
 
-      let shouldCreateAndSend = true;
+      const now = Date.now();
+      let otpExistsAndValid = false;
+      let newOtpPlain = null;
 
-      if (otpRecord) {
-        // if expiresAt exists and is still in the future -> keep it (don't spam)
-        if (otpRecord.expiresAt && otpRecord.expiresAt.getTime() > Date.now()) {
-          shouldCreateAndSend = false;
-        } else {
-          // expired (or no expiresAt) -> we will create a new one
-          shouldCreateAndSend = true;
-        }
-      }
-
-      if (shouldCreateAndSend) {
-        // create (or replace) OTP and return plaintext to send
-        const otpPlain = await Otp.createForUser(user._id, otpType);
+      if (otpRecord && otpRecord.expiresAt && otpRecord.expiresAt.getTime() > now) {
+        otpExistsAndValid = true;
+      } else {
+        // create a fresh OTP record (this should save hashed code + expiresAt inside the model)
+        // We assume Otp.createForUser returns the plaintext code for emailing
+        newOtpPlain = await Otp.createForUser(user._id, otpType);
         try {
-          await sendOtpEmail(user.email, otpPlain, { expiryMinutes: 60 });
+          // send email, but don't fail login if mail fails — show resend UI on client instead
+          await sendOtpEmail(user.email, newOtpPlain, { expiryMinutes: 60 });
         } catch (mailErr) {
           console.error("Failed to send OTP email:", mailErr);
-          // We still proceed to set verification cookie so user can trigger resend from /verify
-          // (Alternatively you could return 500 here — choose what suits your UX.)
         }
+
+        // reload the OTP record after creation so we can return its expiresAt
+        otpRecord = await Otp.findOne({ userId: user._id, type: otpType });
       }
 
-      // generate verification token (sent as httpOnly cookie)
+      // generate verification token (short-lived) and set as httpOnly cookie
       const verificationToken = generateVerificationToken({
         uid: user._id.toString(),
         email: user.email,
+        type: "verification",
       });
 
-      res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000)); // 1 hour
-      return res.status(200).json({ redirectTo: "/verify", message: "Verification required" });
+      // 1 hour expiry for verification flow
+      res.cookie("verificationToken", verificationToken, cookieOpts(60 * 60 * 1000));
+
+      // Return redirect payload for client to navigate to /verify
+      return res.status(200).json({
+        redirectTo: "/verify",
+        otpExists: otpExistsAndValid,
+        otpExpiresAt: otpRecord?.expiresAt ? otpRecord.expiresAt.toISOString() : null,
+        message: otpExistsAndValid
+          ? "Verification OTP already issued"
+          : "New verification OTP issued",
+      });
     }
 
-    // User is verified -> issue session token and return success
-    const sessionToken = generateVerificationToken({
-      uid: user._id.toString(),
-      email: user.email,
-      type: "session",
-    });
+    // -----------------------
+    // USER IS VERIFIED: issue access+refresh tokens and set cookies
+    // -----------------------
+    const accessToken = generateAccessToken(user._id.toString());
+    const refreshToken = generateRefreshToken(user._id.toString());
 
-    // session cookie: 7 days
-    res.cookie("sessionToken", sessionToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
-    return res.status(200).json({ message: "Login successful" });
+    // Access token: short lived
+    res.cookie("accessToken", accessToken, cookieOpts(15 * 60 * 1000)); // 15 minutes
+
+    // Refresh token: long lived
+    res.cookie("refreshToken", refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000)); // 7 days
+
+    // Minimal user payload returned to client
+    return res.status(200).json({
+      message: "Login successful",
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role || "user",
+      },
+    });
   } catch (err) {
     console.error("Login error:", err);
     return next(err);

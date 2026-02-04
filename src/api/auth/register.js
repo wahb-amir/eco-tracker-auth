@@ -4,7 +4,7 @@ import User from "../../model/User.js";
 import Otp from "../../model/Otp.js";
 import {
   generateVerificationToken,
-  generateNumericOtp,
+  generateOtp,
   hashOtp,
 } from "../../utils/token.js";
 import { sendOtpEmail } from "../../utils/mailer.js";
