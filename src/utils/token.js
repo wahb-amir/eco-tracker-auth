@@ -10,9 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
-
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const PUBLIC_KEY = process.env.PUBLIC_KEY;
+const VERIFICATION_TOKEN = process.env.VERIFICATION_TOKEN
 
 export const generateAccessToken = (user) => {
   const token= jwt.sign(user, ACCESS_TOKEN, { expiresIn: "15m" });
@@ -24,28 +22,23 @@ export const generateRefreshToken = (user) => {
   return token;
 };
 
+export const generateVerificationToken = (user) => {
+   const token= jwt.sign(user, VERIFICATION_TOKEN, { expiresIn: "1h" });
+  return token;
+};
+
+export const verifyVerificationToken = (token) => {
+  return jwt.verify(token, VERIFICATION_TOKEN);
+};
+
+
 export const verifyAccessToken = (token) => {
   return jwt.verify(token, ACCESS_TOKEN);
 };
+
 
 export const verifyRefreshToken = (token) => {
   return jwt.verify(token, REFRESH_TOKEN);
 };
 
-export const generateVerificationToken = (payload, expiresIn = "1h") => {
-  return jwt.sign(payload, PRIVATE_KEY, {
-    algorithm: "RS256",
-    expiresIn,
-  });
-};
 
-export const verifyVerificationToken = (token) => {
-  try {
-    const decoded = jwt.verify(token, PUBLIC_KEY, {
-      algorithms: ["RS256"],
-    });
-    return { valid: true, decoded };
-  } catch (err) {
-    return { valid: false, error: err.message };
-  }
-};

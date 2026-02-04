@@ -8,7 +8,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import Login from "./api/auth/login.js"
 import Register from "./api/auth/register.js"
-import verifyRouter from './api/auth/verify.js'
+import verifyRouter from './api/auth/verify/verify.js'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
