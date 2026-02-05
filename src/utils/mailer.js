@@ -33,9 +33,8 @@ export async function sendOtpEmail(toEmail, otp, opts = {}) {
   // sanitize origin: remove trailing slash
   const origin = typeof originRaw === "string" ? originRaw.replace(/\/+$/, "") : "";
 
-  // include both email & otp in query params so clicking from email autofills
   const verifyUrl = origin
-    ? `${origin}/verify?email=${encodeURIComponent(toEmail)}&otp=${encodeURIComponent(otp)}`
+    ? `${origin}/verify-otp?otp=${encodeURIComponent(otp)}`
     : "";
 
   const fromAddress = process.env.EMAIL_FROM ?? `"Eco Tracker" <${process.env.EMAIL_USER}>`;

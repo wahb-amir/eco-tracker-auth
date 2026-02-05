@@ -40,7 +40,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:5000",
-  "http://localhost:5500",
+  "http://localhost:9002",
 ];
 cron.schedule("*/10 * * * *", cleanupExpiredOtps);
 app.use(
@@ -59,9 +59,9 @@ app.use(
 app.use(express.json());
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, "../asset")));
-app.use(('/api/login'),AuthLimiter,Login)
-app.use(('/api/register'),AuthLimiter,Register)
-app.use("/verify",VerifyRateLimit, verifyRouter);
+app.use(('/api/auth/login'),AuthLimiter,Login)
+app.use(('/api/auth/register'),AuthLimiter,Register)
+app.use("/api/auth/verify",VerifyRateLimit, verifyRouter);
 
 app.get("/", (req, res) => {
   res.json({ msg: "hello" });

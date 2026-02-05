@@ -15,7 +15,6 @@ router.get('/me', authMiddleware, (req, res) => {
   return res.status(200).json({
     id: user.id,
     email: user.email,
-    role: user.role,
   });
 });
 

@@ -65,8 +65,8 @@ router.post("/", async (req, res) => {
 
     const user = userDoc[0];
 
-    // ---------- generate OTP ----------
-    const otp = generateNumericOtp(6);
+    
+    const otp = generateOtp(6);
 
     await Otp.deleteMany({ userId: user._id }).session(session);
 
@@ -98,7 +98,7 @@ router.post("/", async (req, res) => {
       path: "/",
     });
 
-    // ---------- send OTP email ----------
+
     try {
       await sendOtpEmail(email, otp, { expiryMinutes: 60 });
     } catch (mailErr) {

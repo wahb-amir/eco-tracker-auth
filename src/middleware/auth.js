@@ -44,7 +44,6 @@ export async function authMiddleware(req, res, next) {
       return next();
     }
 
-    // if we reach here → not authenticated
     req.user = null;
     next();
   } catch (err) {
