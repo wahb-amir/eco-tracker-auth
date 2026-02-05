@@ -92,7 +92,7 @@ router.post("/", async (req, res, next) => {
 
       // Return redirect payload for client to navigate to /verify
       return res.status(200).json({
-        redirectTo: "/verify",
+        requireMFA: true,
         otpExists: otpExistsAndValid,
         otpExpiresAt: otpRecord?.expiresAt ? otpRecord.expiresAt.toISOString() : null,
         message: otpExistsAndValid

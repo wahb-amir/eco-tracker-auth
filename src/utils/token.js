@@ -3,6 +3,7 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 import path from "path"
 import { fileURLToPath } from "url";
+import { decode } from "punycode";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -44,14 +45,20 @@ export const generateVerificationToken = (payload) => {
   );
 };
 
-export const verifyAccessToken = (token) =>
-  jwt.verify(token, ACCESS_TOKEN_SECRET);
+export const verifyAccessToken = (token) =>{
+  const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
+  return decoded
+}
 
-export const verifyRefreshToken = (token) =>
-  jwt.verify(token, REFRESH_TOKEN_SECRET);
+export const verifyRefreshToken = (token) =>{
+  const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET);
+  return decoded
+}
 
-export const verifyVerificationToken = (token) =>
-  jwt.verify(token, VERIFICATION_TOKEN_SECRET);
+export const verifyVerificationToken = (token) =>{
+  const decoded = jwt.verify(token, VERIFICATION_TOKEN_SECRET);
+  return decoded
+}
 
 /* ───────────────── OTP HELPERS ───────────────── */
 
@@ -88,7 +95,6 @@ export async function rotateTokens(refreshToken) {
 
     const decoded = verifyRefreshToken(refreshToken); 
     const userId = decoded.uid;
-
     const user = { id: userId }; 
 
     const newAccessToken = generateAccessToken(userId);
